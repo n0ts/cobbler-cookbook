@@ -1,0 +1,42 @@
+#set $chef_server_url = $getVar('chef_server_url', '')
+#set $chef_user_name = $getVar('chef_user_name', '')
+#set $hostname_s = $hostname.split('.')[0]
+
+#if $chef_server_url != ''
+yum install -y chef
+knife configure client /etc/chef
+mv /etc/chef/client.rb /etc/chef/client.rb-orig
+cat << EOF > /etc/chef/client.rb
+log_level        :info
+log_location     STDOUT
+chef_server_url  '$chef_server_url'
+validation_client_name 'chef-validator'
+node_name        '$hostname_s'
+EOF
+mv /etc/chef/validation.pem /etc/chef/validation.pem-orig
+cat << EOF > /etc/chef/validation.pem
+#include '/etc/chef-server/chef-validator.pem'
+EOF
+chef-client -c /etc/chef/client.rb
+
+  #if $user_name != '' and $chef_user_name != ''
+#set $user_chef_dir = '/home/' + $user_name + '/.chef'
+mkdir $user_chef_dir
+cat << EOF > $user_chef_dir/admin.pem
+#include $user_chef_dir + '/admin.pem'
+EOF
+cat << EOF > $user_chef_dir/${chef_user_name}.pem
+#include $user_chef_dir + '/' + $chef_user_name + '.pem'
+EOF
+cat << EOF > $user_chef_dir/chef-validator.pem
+#include $user_chef_dir + '/chef-validator.pem'
+EOF
+cat << EOF > $user_chef_dir/knife.rb
+#include $user_chef_dir + '/knife.rb'
+EOF
+chmod 600 $user_chef_dir/*
+chown -R $user_name $user_chef_dir/
+  #end if
+#end if
+
+##cat << EOF > /etc/sysconfig/iptables

@@ -1,0 +1,14 @@
+#from crypt import crypt
+#from random import choice
+#import string
+
+#set $salt_pop = string.letters + string.digits + '.' + '/'
+#set $salt = ''
+
+#for $i in range(8)
+#set $salt = $salt + choice($salt_pop)
+#end for
+
+#set $salt = '$1$' + $salt
+#set $encpass = crypt($rootpw, $salt)
+rootpw --iscrypted $encpass

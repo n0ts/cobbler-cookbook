@@ -1,0 +1,2 @@
+#set $cmd = "gem install --no-rdoc --no-ri ohai chef; "
+#echo $cmd + "\\"

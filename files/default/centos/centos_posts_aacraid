@@ -1,0 +1,14 @@
+##
+# install kernel and copy aacraid.ko and mkinitrd
+##
+#set $aacraid_kernel = $getVar('aacraid_kernel', '')
+#if $aacraid_kernel != ''
+yum install -y kernel-$aacraid_kernel
+
+wget -O /tmp/aacraid.ko "http://$server:$http_port/cobbler/pub/aacraid.ko"
+cp /tmp/aacraid.ko /lib/modules/$aacraid_kernel/kernel/drivers/scsi/aacraid/
+
+depmod $aacraid_kernel
+mkinitrd -f /boot/initrd-${aacraid_kernel}.img $aacraid_kernel
+#end if
+

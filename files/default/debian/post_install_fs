@@ -1,0 +1,2 @@
+#set $cmd = "tune2fs -c 0 -i 0 -m 1 /dev/mapper/vg-lv_root; "
+#echo $cmd + "\\"

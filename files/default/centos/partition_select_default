@@ -1,0 +1,11 @@
+# Determine how many drives we have
+set \$(list-harddrives)
+let numd=\$#/2
+d1=\$1
+d2=\$3
+
+cat << EOF >> /tmp/partinfo
+part /boot --fstype=ext3    --size=1000       --ondisk=\$d1 --asprimary
+part /     --fstype=$fstype --size=$disk_size --ondisk=\$d1 --asprimary --fsoptions="$fsoptions"
+part swap  --fstype=swap    --size=\$swap_size
+EOF

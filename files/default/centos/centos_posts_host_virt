@@ -1,0 +1,11 @@
+##
+# delete default bridge
+##
+virsh net-destroy default
+virsh net-autostart default --disable
+
+
+##
+# virt service
+##
+service libvirtd start

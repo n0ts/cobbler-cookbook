@@ -1,0 +1,33 @@
+           lvm-default ::                 \
+             32 32 32 free                \
+                $gptonly{ }               \
+                $primary{ }               \
+                $bios_boot{ }             \
+                method{ biosgrub }        \
+             .                            \
+             512 50 512 ext3              \
+                $primary{ }               \
+                $bootable{ }              \
+                method{ format }          \
+                format{ }                 \
+                use_filesystem{ }         \
+                filesystem{ ext3 }        \
+                mountpoint{ /boot }       \
+             .                            \
+             $swap_size 50 $swap_size swap \
+                $defaultignore{ }         \
+                $lvmok{ }                 \
+                lv_name{ lv_swap }        \
+                method{ swap }            \
+                format{ }                 \
+             .                            \
+             1 50 -1 ext4 \
+                $defaultignore{ }         \
+                $lvmok{ }                 \
+                lv_name{ lv_root }        \
+                method{ format }          \
+                format{ }                 \
+                use_filesystem{ }         \
+                filesystem{ ext4 }        \
+                mountpoint{ / }           \
+             .

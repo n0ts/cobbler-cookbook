@@ -1,0 +1,4 @@
+#set $cmd = "usermod %s --home /%s --shell /bin/zsh --uid 1000; " % ($username, $username)
+#set $cmd += "mkdir /%s; " % $username
+#set $cmd += "chwon -R 1000 /%s; " % $username
+#echo $cmd + "\\"

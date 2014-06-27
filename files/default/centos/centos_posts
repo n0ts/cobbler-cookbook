@@ -1,0 +1,456 @@
+##
+# ntp
+##
+#set $ntp_server = $getVar('ntp_server', '')
+#if $ntp_server != ''
+yum install -y ntp
+ntpdate -t 10 -b -u $ntp_server
+yum remove -y ntp
+#end if
+
+
+##
+# grub
+##
+patch /boot/grub/grub.conf << EOF
+12c12
+< splashimage=(hd0,0)/grub/splash.xpm.gz
+---
+> #splashimage=(hd0,0)/grub/splash.xpm.gz
+EOF
+
+
+#if $is_sol
+#import re
+#if $serial_port != ''
+  #set $serial_port_re = $re.compile("ttyS([0-9])")
+  #set $serial_port_re_match = $serial_port_re.match($serial_port)
+  #if $serial_port_re_match
+    #set $serial_port_unit = $serial_port_re_match.group(1)
+  #else
+    #set serial_port_unit = 0
+  #end if
+#end if
+
+patch /boot/grub/grub.conf << EOF
+12a13,14
+> serial --unit=$serial_port_unit --speed=$baud_rate --word=8 --parity=no --stop=1
+> terminal --timeout=10 console serial
+EOF
+#end if
+
+
+# io scheduler
+## http://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/tree/Documentation/block/switching-sched.txt?id=HEAD
+## [noop] anticipatory deadline cfq
+#set $io_scheduler = $getVar('io_scheduler', '')
+#if $io_scheduler != ''
+grubby --update-kernel=ALL --args=elevator=$io_scheduler
+#end if
+
+
+##
+# profile
+##
+patch /etc/profile << EOF
+#raw
+23c23
+< if [ "\\$EUID" = "0" ]; then
+---
+> #if [ "\\$EUID" = "0" ]; then
+27c27
+< fi
+---
+> #fi
+#end raw
+EOF
+
+
+##
+# file descriptor
+##
+patch /etc/security/limits.conf << EOF
+49a50,52
+> *               soft    nofile       65535
+> *               hard    nofile       65535
+> 
+EOF
+
+
+##
+# network
+##
+cat << EOF >> /etc/sysconfig/network
+NOZEROCONF=yes
+EOF
+
+
+##
+# modprobe
+##
+mv /etc/modprobe.conf /etc/modprobe.conf-orig
+grep "alias eth" /etc/modprobe.conf-orig | sort > /etc/modprobe.conf
+grep -v "alias eth" /etc/modprobe.conf-orig >> /etc/modprobe.conf
+
+
+##
+# udev
+##
+sed -i -e 's/^/\#/' /etc/udev/rules.d/60-net.rules
+#raw
+echo "" >> /etc/udev/rules.d/60-net.rules
+eth=0
+for hwaddr in `grep --no-filename HWADDR /etc/sysconfig/network-scripts/ifcfg-*`; do
+  mac=`echo $hwaddr | cut -d '=' -f 2`
+  if [ -n $mac ]; then
+    echo "SUBSYSTEM==\"net\", ACTION==\"add\", BUS==\"pci\", KERNEL==\"eth*\", SYSFS{address}==\"$mac\", NAME=\"eth$eth\"" >> /etc/udev/rules.d/60-net.rules
+    eth=`expr $eth + 1`
+  fi
+done
+#end raw
+
+
+##
+# disable ipv6
+##
+#for $n in $kernel_options.split(' ')
+  #if $n == 'noipv6'
+patch /etc/sysconfig/network << EOF
+2c2
+< NETWORKING_IPV6=yes
+---
+> NETWORKING_IPV6=no
+EOF
+
+cat << EOF >> /etc/modprobe.conf
+options ipv6 disable=1
+alias net-pf-10 off
+EOF
+
+chkconfig ip6tables off
+  #end if
+#end for
+
+
+##
+# iptables
+##
+#if $system_name != ''
+mv /etc/sysconfig/iptables /etc/sysconfig/iptables-orig
+cat << EOF > /etc/sysconfig/iptables
+*filter
+:INPUT DROP [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -i lo -j ACCEPT
+-A INPUT -p icmp -j ACCEPT
+#set ikeys = $interfaces.keys()
+#for $iname in sorted($ikeys)
+  #set $idata        = $interfaces[$iname]
+  #set $iface_type   = $idata.get('interface_type', '').lower()
+  #set $iface_master = $idata.get('interface_master', '')
+  #set $accept = False
+  #if $iname == 'eth0' or $iname == 'br0' or $iname == 'xenbr0' or $iname == 'bond0'
+    #set $accept = True
+  #elif $iname == 'eth1'
+    #if $iface_type == 'bond_slave'
+    #set $accept = True
+    #end if
+  #end if
+  #if $accept
+-A INPUT -i $iname -j ACCEPT
+  #end if
+#end for
+-A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+COMMIT
+EOF
+chmod 600 /etc/sysconfig/iptables
+#end if
+
+#raw
+cat << EOF >> /etc/sysconfig/iptables-config
+# Unload modules on restart and stop
+#   Value: yes|no,  default: yes
+# This option has to be 'yes' to get to a sane state for a firewall
+# restart or stop. Only set to 'no' if there are problems unloading netfilter
+# modules.
+IPTABLES_MODULES_UNLOAD="no"
+EOF
+#end raw
+
+
+##
+# hosts
+##
+#if $system_name != ''
+  #set ikeys = $interfaces.keys()
+  #for $iname in sorted($ikeys)
+    #set $idata = $interfaces[$iname]
+    #set $ip    = $idata['ip_address']
+    #if $ip != ''
+      #set $hostname_s = $hostname.split('.')[0]
+cat << EOF >> /etc/hosts
+$ip	$hostname_s $hostname
+EOF
+    #end if
+  #end for
+#end if
+
+
+##
+# services
+##
+#set disable_services = [ 
+"acpid",
+"auditd",
+"autofs",
+"avahi-daemon",
+"bluetooth",
+"firstboot",
+"gpm",
+"hidd",
+"iscsi",
+"iscsid",
+"mcstrans",
+"mdmonitor",
+"netfs",
+"nfslock",
+"pcscd",
+"portmap",
+"restorecond",
+"rpcgssd",
+"rpcidmapd",
+"sendmail",
+"yum-updatesd",
+]
+#for $service in $disable_services
+chkconfig $service off
+#end for
+
+
+## Virtual server only
+#if $virt_guest_type != ''
+chkconfig smartd off
+  #if $virt_cpus == 1
+chkconfig irqbalance off
+  #end if
+#end if
+
+
+##
+# disable ctrl+atl+del
+##
+patch /etc/inittab << EOF
+32c32,33
+< ca::ctrlaltdel:/sbin/shutdown -t3 -r now
+---
+> #ca::ctrlaltdel:/sbin/shutdown -t3 -r now
+> ca::ctrlaltdel:/usr/bin/logger 'CTRL-ALT-DELETE trap is disabled'
+EOF
+
+
+##
+# redirect console (physical server or kvm host/guest)
+##
+#if $is_sol
+cat << EOF >> /etc/inittab
+
+# Console Redirection via Serial Port
+s0:12345:respawn:/sbin/agetty -L $baud_rate $serial_port vt102
+EOF
+
+cat << EOF >> /etc/securetty
+$serial_port
+EOF
+#end if
+
+
+##
+# ssh
+##
+patch /etc/ssh/sshd_config << EOF
+39c39
+< #PermitRootLogin yes
+---
+> PermitRootLogin no
+60c60
+< PasswordAuthentication yes
+---
+> PasswordAuthentication no
+73,74c73,74
+< #GSSAPIAuthentication no
+< GSSAPIAuthentication yes
+---
+> GSSAPIAuthentication no
+> #GSSAPIAuthentication yes
+76c76
+< GSSAPICleanupCredentials yes
+---
+> GSSAPICleanupCredentials no
+86,87c86,87
+< #UsePAM no
+< UsePAM yes
+---
+> UsePAM no
+> #UsePAM yes
+95,96c95,96
+< #X11Forwarding no
+< X11Forwarding yes
+---
+> X11Forwarding no
+> #X11Forwarding yes
+EOF
+
+
+##
+# /etc/sysctl.conf
+##
+## memory overcommit
+#set $sysctl_vm_overcommit_memory = $getVar('sysctl_vm_overcommit_memory', '2')
+cat << EOF >> /etc/sysctl.conf
+
+# Disable OOM Killer
+vm.overcommit_ratio = 99
+vm.overcommit_memory = $sysctl_vm_overcommit_memory
+EOF
+
+
+##
+# su
+##
+cat << EOF >> /etc/login.defs
+
+SU_WHEEL_ONLY yes
+EOF
+
+patch /etc/pam.d/su << EOF
+6c6
+< #auth		required	pam_wheel.so use_uid
+---
+> auth		required	pam_wheel.so use_uid
+EOF
+
+
+##
+# sudo
+##
+#if $user_name != ''
+passwd -l root
+
+mkdir -m 755 /etc/sudoers.d
+cat << EOF >> /etc/sudoers
+
+#includedir /etc/sudoers.d
+EOF
+
+cat << EOF > /etc/sudoers.d/_defaults
+Defaults timestamp_timeout = 0
+Defaults passprompt = "%u@%h Password: "
+
+%wheel      ALL=(ALL)       ALL, !/bin/su
+$user_name  ALL=(ALL)       NOPASSWD: ALL, !/bin/su
+EOF
+
+chmod 440 /etc/sudoers.d/_defaults
+#end if
+
+
+##
+# setterm
+##
+#raw
+cat << EOF > /etc/init.d/setterm
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides: setterm
+# Required-Start:
+# Required-Stop:
+# Default-Start: 3 5
+# Default-Stop: 0 1 2 6
+# Short-Description: disable console blanking
+# Description: ref.
+# http://superuser.com/questions/152347/change-linux-console-screen-blanking-behavior
+# http://www.groupsrv.com/linux/about159299.html
+### END INIT INFO
+
+[ "\\$1" == "start" ] || exit 0 # only initialize everything when called as /etc/init.d/setterm start
+
+for term in /dev/tty[0-9]*; do # select all ttyNN, but skip ttyS*
+  setterm -foreground green -store >\\$term <\\$term
+  setterm -background black -store >\\$term <\\$term
+  setterm -blank 0 -store >\\$term <\\$term
+  setterm -powersave off -store >\\$term <\\$term
+  setterm -powerdown 0 -store >\\$term <\\$term
+done
+EOF
+#end raw
+chmod 755 /etc/init.d/setterm
+chkconfig --add setterm
+chkconfig setterm on
+
+
+##
+# tuneXfs
+##
+#set $root_device = '/dev/sda2'
+#set $data_device = ''
+#if $partition.find('lvm') != -1
+  #set $root_device = '/dev/mapper/vg-root'
+  #if $partition.find('_data') != -1
+    #set $data_device = '/dev/mapper/vg-data'
+  #end if
+#end if
+
+#if $fstype == 'ext3'
+  #set $tunefs = '/sbin/tune2fs'
+#else if $fstype == 'ext4'
+  #set $tunefs = '/sbin/tune4fs'
+#else
+  #set $tunefs = ''
+#end if
+
+#if $tunefs != ''
+$tunefs -c 0 -i 0 -m 1 $root_device
+  #if $data_device != ''
+$tunefs -c 0 -i 0 -m 1 $data_device
+  #end if
+#end if
+
+
+##
+# post script for server vendor
+##
+#raw
+VENDOR=`dmidecode -s system-manufacturer 2> /dev/null`
+
+if [ "$VENDOR" = "Dell Inc." ]; then
+  yum --disableexcludes=all install -y compat-libstdc++-33.i386 libstdc++.i386 libxml2-devel.i386 
+elif [ "$VENDOR" = "HP" ]; then
+  yum --disableexcludes=all install -y libstdc++.i386
+elif [ "$VENDOR" = "Supermicro" ]; then
+  yum --disableexcludes=all install -y compat-libstdc++-33.i386
+fi
+#end raw
+
+
+##
+# yum
+##
+rm -f /etc/yum.repos.d/CentOS-*.repo
+
+#if $arch == 'x86_64'
+#set $yum_exclude = '*.i386'
+#else
+#set $yum_exclude = ''
+#end if
+
+patch /etc/yum.conf << EOF
+11a12
+> exclude=$yum_exclude
+15c16
+< metadata_expire=1h
+---
+> metadata_expire=0
+EOF

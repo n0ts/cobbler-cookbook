@@ -1,0 +1,10 @@
+#set $new_kopts = []
+#set $kopts = $kernel_options_post.split(' ')
+#for $kopt in $kopts
+  #set $new_kopt = $kopt.replace('@@serial_port@@', $serial_port).replace('@@baud_rate@@', str($baud_rate))
+$new_kopts.append($new_kopt)
+#end for
+#set $new_kernel_options_post = ' '.join($new_kopts)
+#if $new_kernel_options_post != $kernel_options_post
+  #set global $kernel_options_post = ' '.join($new_kopts)
+#end if

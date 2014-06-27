@@ -1,0 +1,1 @@
+useradd -g $group_name -s /bin/bash $user_name -p ''
