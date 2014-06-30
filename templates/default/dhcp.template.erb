@@ -25,8 +25,8 @@ option pxe-system-type code 93 = unsigned integer 16;
 shared-network <%= node['cobbler']['dhcp']['shared-network'] %> {
 <% end %>
 
-<% node['cobbler']['dhcp']['subnet'].each do |subnet, params| -%>
-  <% next if subnet.empty? -%>
+<% node['cobbler']['dhcp']['subnet'].each do |subnet, params| %>
+  <% next if subnet.empty? %>
 subnet <%= subnet %> netmask <%= params['netmask'] %> {
     option routers             <%= params['routers'] %>;
     option domain-name-servers <%= params['domain-name-servers'].join(', ') %>;
@@ -36,12 +36,12 @@ subnet <%= subnet %> netmask <%= params['netmask'] %> {
     max-lease-time             43200;
     next-server                $next_server;
     class "pxeclients" {
-        # match is can't override match.
-        <% if node['cobbler']['dhcp']['subnet'].count == 1 -%>
+        <% if node['cobbler']['dhcp']['subnet'].count == 1 %>
         match if substring (option vendor-class-identifier, 0, 9) = "PXEClient";
-        <% else -%>
+        <% else %>
+        # match is can't override match.
         #match if substring (option vendor-class-identifier, 0, 9) = "PXEClient";
-        <% end -%>
+        <% end %>
         if option pxe-system-type = 00:02 {
             filename "ia64/elilo.efi";
         } else if option pxe-system-type = 00:06 {
@@ -53,7 +53,7 @@ subnet <%= subnet %> netmask <%= params['netmask'] %> {
         }
     }
 }
-<% end -%>
+<% end %>
 
 <% unless node['cobbler']['dhcp']['shared-network'].empty? %>
 }
